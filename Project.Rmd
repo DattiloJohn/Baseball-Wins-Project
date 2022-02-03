@@ -1,0 +1,381 @@
+---
+title: "A Different Way of Expected Wins"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval=TRUE)
+```
+
+**Reading Data:**
+
+```{r}
+hitting <- read.csv("FG_Custom_2015_2019.csv")
+hitting[] <- lapply(hitting, gsub, pattern="%", replacement = "")
+
+colnames(hitting)<- c("Season","Team","ExitVelocity_H","LaunchAngle_H","Barrel%_H","HardHit%_H","K%_H","BB%_H","IsolatedPower_H","LineDrive%_H","Groundball%_H","Flyball%_H","WeightedRunsCreatedPlus_H","Runs_H","OPS_H","SLG_H","BABIP_H","HR_H","wOBA_H")
+
+str(hitting)
+```
+
+```{r}
+pitching = read.csv("FG_Pitching_2015_2019.csv")
+pitching[] <- lapply(pitching, gsub, pattern="%", replacement = "")
+
+colnames(pitching) = c("Season","Team","Wins","BABIP_P","LOB%_P","HR/FB_P","ERA_P","FIP_P","xFIP_P","WAR_P","WHIP_P","LineDrive%_P","Groundball%_P","Flyball%_P","SwingingStrike%_P","K%_P","BB%_P","SIERA_P","Soft%_P","Med%_P","Hard%_P","ExitVelo_P","LaunchAngle_P","Barrel%_P","HardHit%_P")
+
+str(pitching)
+```
+
+```{r}
+pitching_RunsAllowed = read.csv("FG_Pitching_RunsAllowed_2015_2019.csv")
+pitching = cbind(pitching,pitching_RunsAllowed[,5])
+colnames(pitching) = c("Season","Team","Wins","BABIP_P","LOB%_P","HR/FB_P","ERA_P","FIP_P","xFIP_P","WAR_P","WHIP_P","LineDrive%_P","Groundball%_P","Flyball%_P","SwingingStrike%_P","K%_P","BB%_P","SIERA_P","Soft%_P","Med%_P","Hard%_P","ExitVelo_P","LaunchAngle_P","Barrel%_P","HardHit%_P","RA_P")
+```
+
+
+```{r eval=FALSE, include=FALSE}
+#Changing Team name in pitching to match in hitting
+#DO NOT NEED ANYMORE
+library(tidyverse)
+pitching = 
+  pitching %>%
+  mutate(Team = case_when(
+    Team == "BAL"  ~ "Orioles",
+    Team == "BOS"  ~ "Red Sox",
+    Team == "TOR"  ~ "Blue Jays",
+    Team == "TBR"  ~ "Rays",
+    Team == "NYY"  ~ "Yankees",
+    Team == "CHW"  ~ "White Sox",
+    Team == "CLE"  ~ "Indians",
+    Team == "DET"  ~ "Tigers",
+    Team == "KCR"  ~ "Royals",
+    Team == "MIN"  ~ "Twins",
+    Team == "HOU"  ~ "Astros",
+    Team == "LAA"  ~ "Angles",
+    Team == "OAK"  ~ "Athletics",
+    Team == "SEA"  ~ "Mariners",
+    Team == "TEX"  ~ "Rangers",
+    Team == "ATL"  ~ "Braves",
+    Team == "MIA"  ~ "Marlins",
+    Team == "NYM"  ~ "Mets",
+    Team == "PHI"  ~ "Phillies",
+    Team == "WSN"  ~ "Nationals",
+    Team == "CHC"  ~ "Cubs",
+    Team == "CIN"  ~ "Reds",
+    Team == "MIL"  ~ "Brewers",
+    Team == "PIT"  ~ "Pirates",
+    Team == "STL"  ~ "Cardinals",
+    Team == "ARI"  ~ "Diamonabacks",
+    Team == "COL"  ~ "Rockies",
+    Team == "LAD"  ~ "Dodgers",
+    Team == "SDP"  ~ "Padres",
+    Team == "SFG"  ~ "Giants",
+    TRUE ~ Team
+  ))
+```
+
+**Merge Data frames:**
+```{r}
+baseball = merge(x = hitting,y = pitching,by = c("Team", "Season"))
+```
+
+
+```{r eval=FALSE, include=FALSE}
+library(writexl)
+write_xlsx(baseball,'C:\\Users\\John\\Desktop\\baseball.xlsx')
+```
+
+**Data Manipulation:**
+```{r}
+#Change all columns except team from characters to numeric
+i = c(2:length(baseball))
+baseball[ , i] <- apply(baseball[ , i], 2,            
+                    function(x) as.numeric(as.character(x)))
+sapply(baseball, class)      
+
+```
+
+**Function to calculation expected wins:**
+```{r}
+PythagoreanWinningPercentage = function(RS,RA)
+{
+  (RS^1.83/ (RS^1.83 + RA^1.83))
+}
+```
+
+**Summary Statistics:**
+```{r}
+#summary statistics
+summary(baseball)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+hist(baseball$Wins)
+```
+
+**Exploring Wins compared to the other variable in the data set:**
+
+```{r}
+#Remove Team from data so dataframe and be used of modeling
+baseball_m = baseball[,-c(1,2,14,24,25,26,27,35)]
+```
+
+```{r}
+
+```
+
+
+```{r include=FALSE}
+
+for (i in names(baseball)) {
+  plot(baseball$Wins,baseball_m[1:150,i],xlab = "Wins",ylab = i)
+}
+
+```
+
+
+
+**Modeling:**
+```{r eval=FALSE, include=FALSE}
+set.seed(1234)
+sample_size = round(nrow(baseball_m )*.80)
+index <- sample(seq_len(nrow(baseball_m)), size = sample_size)
+ 
+train <- baseball_m[index, ]
+test <- baseball_m[-index, ]
+
+
+
+#define intercept-only model
+intercept_only <- lm(Wins ~ 1, data=train)
+
+#define model with all predictors
+full <- lm(Wins ~ ., data=train)
+
+#perform forward stepwise regression
+model <- step(intercept_only, direction='forward', scope=formula(full))
+
+predict(model,test)
+actual_vs_pred = data.frame( predict(model, type="response",test),baseball_m$Wins[-index])
+colnames(actual_vs_pred) = c("Predicted","Actual")
+actual_vs_pred$team = baseball$Team[-index]
+actual_vs_pred$season = baseball$Season[-index]
+actual_vs_pred$RS =  baseball$Runs_H[-index]
+actual_vs_pred$RA =  baseball$RA_P[-index]
+actual_vs_pred$PythagoreanW = PythagoreanWinningPercentage(actual_vs_pred$RS,actual_vs_pred$RA) * 162
+actual_vs_pred$PWL_Diff = actual_vs_pred$Actual - actual_vs_pred$PythagoreanW
+actual_vs_pred$diff = actual_vs_pred$Actual - actual_vs_pred$Predicted
+actual_vs_pred$change = abs(actual_vs_pred$PWL_Diff) - abs(actual_vs_pred$diff)
+
+```
+
+```{r eval=FALSE, include=FALSE}
+for (i in names(baseball)) {
+  plot(actual_vs_pred$diff,baseball_m[-index,i], xlab ="Difference", ylab = i)
+}
+```
+
+
+```{r include=FALSE}
+set.seed(1234)
+sample_size = round(nrow(baseball_m )*.80)
+index <- sample(seq_len(nrow(baseball_m)), size = sample_size)
+ 
+train <- baseball_m[index, ]
+test <- baseball_m[-index, ]
+
+
+#define intercept-only model
+intercept_only <- glm(Wins ~ 1,family = poisson(link = "log"), data=train)
+
+#define model with all predictors
+full <- glm(Wins ~ .,family = poisson(link = "log"), data=train)
+
+#perform forward stepwise regression
+model <- step(intercept_only, direction='both', scope=formula(full))
+
+predict(model, type="response",test)
+actual_vs_pred = data.frame( predict(model, type="response",test),baseball_m$Wins[-index])
+colnames(actual_vs_pred) = c("Predicted","Actual")
+actual_vs_pred$diff = actual_vs_pred$Actual - actual_vs_pred$Predicted
+actual_vs_pred$team = baseball$Team[-index]
+actual_vs_pred$season = baseball$Season[-index]
+```
+
+```{r}
+model = glm(formula = Wins ~ WHIP_P + wOBA_H + `LOB%_P`,
+    family = poisson(link = "log"), data = train)
+
+predict(model, type="response",test)
+actual_vs_pred = data.frame( predict(model, type="response",test),baseball_m$Wins[-index])
+colnames(actual_vs_pred) = c("Predicted","Actual")
+actual_vs_pred$team = baseball$Team[-index]
+actual_vs_pred$season = baseball$Season[-index]
+actual_vs_pred$RS =  baseball$Runs_H[-index]
+actual_vs_pred$RA =  baseball$RA_P[-index]
+actual_vs_pred$PythagoreanW = PythagoreanWinningPercentage(actual_vs_pred$RS,actual_vs_pred$RA) * 162
+actual_vs_pred$PWL_Diff = actual_vs_pred$Actual - actual_vs_pred$PythagoreanW
+actual_vs_pred$diff = actual_vs_pred$Actual - actual_vs_pred$Predicted
+actual_vs_pred$change = abs(actual_vs_pred$PWL_Diff) - abs(actual_vs_pred$diff)
+```
+
+```{r echo=FALSE}
+plot(actual_vs_pred$Actual,actual_vs_pred$Predicted)
+text(actual_vs_pred$Actual,actual_vs_pred$Predicted, labels=baseball$Team[-index], cex= 0.3, pos=1)
+```
+
+```{r}
+model2 = glm(formula = Wins ~ WHIP_P + wOBA_H + `LOB%_P` + `K%_H`,
+    family = poisson(link = "log"), data = train)
+
+model3 = lm(Wins ~ Runs_H, data = baseball)
+model4 = lm(Wins ~ RA_P, data = baseball)
+```
+
+
+**Regression Diagnostics**
+```{r}
+library(performance)
+check_model(model)
+model_performance(model)
+
+check_model(model2)
+model_performance(model2)
+```
+
+
+
+
+```{r eval=FALSE, include=FALSE}
+set.seed(1234)
+sample_size = round(nrow(baseball_m )*.80)
+#colnames(baseball_m) <- make.names(colnames(baseball_m))
+index <- sample(seq_len(nrow(baseball_m)), size = sample_size)
+train <- baseball_m[index, ]
+test <- baseball_m[-index, ]
+
+library(tree)
+tree <- tree(Wins ~ ., data = train)
+cvtree<- cv.tree(tree)
+plot(cvtree$size, cvtree$dev, type = "b", 
+     xlab = "Tree size", ylab = "Deviance")
+
+```
+
+```{r eval=FALSE, include=FALSE}
+prunetree <- prune.tree(tree, best = 5)
+plot(prunetree)
+text(prunetree, cex = 0.5)
+
+tree_pred <- predict(prunetree, newdata = test)
+
+```
+
+```{r eval=FALSE, include=FALSE}
+actual_vs_pred = data.frame(tree_pred,as.numeric(baseball_m$Wins[-index]))
+actual_vs_pred = data.frame(predict(model, type="response",test),baseball_m$Wins[-index])
+colnames(actual_vs_pred) = c("Predicted","Actual")
+actual_vs_pred$team = baseball$Team[-index]
+actual_vs_pred$season = baseball$Season[-index]
+actual_vs_pred$RS =  baseball$Runs_H[-index]
+actual_vs_pred$RA =  baseball$RA_P[-index]
+actual_vs_pred$PythagoreanW = PythagoreanWinningPercentage(actual_vs_pred$RS,actual_vs_pred$RA) * 162
+actual_vs_pred$PWL_Diff = actual_vs_pred$Actual - actual_vs_pred$PythagoreanW
+actual_vs_pred$diff = actual_vs_pred$Actual - actual_vs_pred$Predicted
+actual_vs_pred$change = abs(actual_vs_pred$PWL_Diff) - abs(actual_vs_pred$diff)
+
+View(actual_vs_pred)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+library(randomForest)
+set.seed(1234)
+model = randomForest(Wins ~ . ,data = train)
+sqrt(model$mse[which.min(model$mse)]) # Avg diff between pred and obs
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+model_tuned <- tuneRF(
+               x=train[,-17], #define predictor variables
+               y=train$Wins, #define response variable
+               ntreeTry=500,
+               mtryStart=4, 
+               stepFactor=1.5,
+               improve=0.01,
+               trace=FALSE #don't show real-time progress
+               )
+```
+
+```{r eval=FALSE, include=FALSE}
+model = randomForest(Wins ~ . ,mtry = 13, data = train)
+sqrt(model$mse[which.min(model$mse)]) # Avg diff between pred and obs
+
+random_pred = predict(model,test) 
+actual_vs_pred = data.frame(random_pred,as.numeric(baseball_m$Wins[-index]))
+colnames(actual_vs_pred) = c("Predicted","Actual")
+actual_vs_pred$diff = actual_vs_pred$Actual - actual_vs_pred$Predicted
+actual_vs_pred$team = baseball$Team[-index]
+actual_vs_pred$season = baseball$Season[-index]
+
+View(actual_vs_pred)
+```
+
+
+
+
+```{r eval=FALSE, include=FALSE}
+library(e1071)
+set.seed(1234)
+svm_linear = svm(Wins ~ ., data = train, kernel = "linear", cost = 1, scale = FALSE)
+svm_poly = svm(Wins ~ ., data = train, kernel = "polynomial", cost = 1, scale = FALSE)
+svm_radial = svm(Wins ~ ., data = train, kernel = "radial", cost = 1, scale = FALSE)
+svm_sigmoid = svm(Wins ~ ., data = train, kernel = "sigmoid", cost = 1, scale = FALSE)
+
+
+svm_linear_pred = predict(svm_linear,test) 
+svm_poly_pred = predict(svm_poly,test) 
+svm_radial_pred = predict(svm_radial,test) 
+svm_sigmoid_pred = predict(svm_sigmoid,test) 
+
+actual_vs_pred = data.frame(svm_linear_pred,svm_poly_pred,svm_radial_pred,
+                            svm_sigmoid_pred,as.numeric(baseball_m$Wins[-index]))
+colnames(actual_vs_pred) = c("SVM Linear Kernal","SVM Polynomial Kernal","SVM Radial Kernal",
+                             "SVM Sigmoid Kernal","Actual")
+actual_vs_pred$diff = actual_vs_pred$Actual - actual_vs_pred$`SVM Linear Kernal`
+actual_vs_pred$team = baseball$Team[-index]
+actual_vs_pred$season = baseball$Season[-index]
+actual_vs_pred$RS =  baseball$Runs_H[-index]
+actual_vs_pred$RA =  baseball$RA_P[-index]
+actual_vs_pred$PythagoreanW = PythagoreanWinningPercentage(actual_vs_pred$RS,actual_vs_pred$RA) * 162
+actual_vs_pred$PWL_Diff = actual_vs_pred$Actual - actual_vs_pred$PythagoreanW
+actual_vs_pred$change = abs(actual_vs_pred$PWL_Diff) - abs(actual_vs_pred$diff)
+
+View(actual_vs_pred)
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+attach(baseball)
+selected = c(19)
+plot(Wins,WHIP_P)
+text(Wins[selected],WHIP_P[selected], 
+     labels = c(baseball$Team[selected],baseball$Season[selected]),
+     cex = 0.6, pos = c(1,2), col = "red")
+
+detach(baseball)
+
+```
+
+```{r}
+
+```
+
+
+
