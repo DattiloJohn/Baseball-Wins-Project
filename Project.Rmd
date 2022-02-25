@@ -1,5 +1,6 @@
 ---
 title: "A Different Way of Expected Wins"
+author: "John Dattilo"
 output:
   pdf_document: default
 ---
@@ -8,9 +9,81 @@ output:
 knitr::opts_chunk$set(eval=TRUE)
 ```
 
-**Reading Data:**
+**Introduction:**  
+I downloaded baseball statistics from Fangraph.com to gather data from the 2015 to 2019 seasons on
+how teams performed during each season. I originally wanted to see how these statistics would help
+predict the amount of runs a team would score or give up during the course of a season. I later
+decided that I want to create a model to predict the amount of wins a team would have and then compare
+this prediction to Bill James expected win-loss formula: Expected Wins = Number of Games * W%=[(Runs Scored)^1.83]/[(Runs Scored)^1.83 + (Runs Allowed)^1.83], with an average difference slightly over 3 
+games per season. I ended up creating a multiple linear regression model that on average predicted the
+amount of wins within 4.36 games. 
 
-```{r}
+**Reading and Manipulating Data:**  
+I had to download two different csv files for each team, one for hitting and another for pitching
+statistics. For both files I had to clean the data such that I had to remove the percentage sign
+within the data and then I changed the datatype for those vairables from a character to numeric.I
+also renamed many of the column names to make the variables much easier to understand which team
+statistics the variable belonged too. I finally merged the two data files to be combined into one by
+using two variables, the team name and the year of the season which allowed for every team to have
+one row of variables per season.
+
+**Summary Statistics:**  
+When looking the summary statistics of the data I noticed that average of the Weighted Runs Created Plus was not 
+equal to 100, this is due to the fact that this statistic is adjusted for park factors which changes year to year, I will take caution when using the variable in the models. I also noticed that the average number of wins is
+80.97 which is very close to what I expected of 81. This small difference is due to some teams not being able
+making up a game. The last thing I noticed that average team hitting stats such as hard hit percentage,
+flyball percentage, groundball percentage, and line drive percentage had the same average as the
+same pitching stats suggesting that there is no errors in these stats I also created a function to
+display the correlations between wins and all of the other stats to get a good idea at which stats 
+to include in the model.
+
+
+**Modeling:**  
+I decided to use a multiple regression model over a poisson regression model even though poisson
+models is used for count data because the assumption that the mean of the mean of the response variable
+Wins does not equal to the variance. I ended up running a step wise regression, which is a repetitive
+process which adds and removing variables until adding or removing variable does not improve the 
+AIC (Akaike Information Criterion), which the lowest score means that the model is more likely to
+be the best model over the others in the dataset. I split up the data into a training set and a testing set
+such that I can make predictions on data that the model has not seen in order, as testing on data the model has seen can result in overfitting.The first model I came up with was $$
+\begin{aligned}
+\operatorname{Wins} &= \alpha + \beta_{1}(\operatorname{WHIP\_P}) + \beta_{2}(\operatorname{wOBA\_H}) + \beta_{3}(\operatorname{`LOB\%\_P`})\ + \\
+&\quad \beta_{4}(\operatorname{`Flyball\%\_P`}) + \beta_{5}(\operatorname{`HardHit\%\_H`}) + \beta_{6}(\operatorname{`HR/FB\_P`}) + \beta_{7}(\operatorname{OPS\_H})\ + \\
+&\quad \beta_{8}(\operatorname{SLG\_H}) + \beta_{9}(\operatorname{ExitVelo\_P}) + \epsilon
+\end{aligned}. $$
+
+The probably with this model was that the variable OPS_H, SLG_H, and wOBA_H all had high variance inflation factors, which violates the assumption that all the predictors are independent from one another. In order to
+fix this solution I decided to only keep one of the three variables in the final model, which I choose
+to keep OPS_H instead of SLG_H or wOBA_H as OPS_H was highly significant in the model. I ended up with
+a final model of: $$
+\begin{aligned}
+\operatorname{Wins} &= \alpha + \beta_{1}(\operatorname{WHIP\_P}) + \beta_{2}(\operatorname{OPS\_H}) + \beta_{3}(\operatorname{`LOB\%\_P`})\ + \\
+&\quad \beta_{4}(\operatorname{`Flyball\%\_P`}) + \beta_{5}(\operatorname{`HardHit\%\_H`}) + \beta_{6}(\operatorname{`HR/FB\_P`}) + \epsilon
+\end{aligned} $$
+This model passes all of the assumptions of linear regression that: \     
+   1. The residual vs fitted plot is approximately horizontal at 0 suggesting a linear relationship between
+the response variable and the predictor variables. \   
+   2. The homogeneity of variance plot is an approximately flat line suggesting that there is constant
+variances within the residuals \    
+   3. There is no high variance inflation factors suggesting at the predictors are independent from one another \    
+   4.  The distribution of residuals follow the normal distribution validating the assumption that the residuals
+are normally distributed. \    
+
+**Conclusions:**  
+The final model ended up predicting wins with an average error of 4.36 wins. This unfortunately does
+not improve on Bill Jame's expected win loss model that ends up with an average error of 1 less win
+compared to my multiple linear regression model. I also trying building tree-based models but they
+did not perform as well as the linear regression model. The benefit of using the linear regression 
+model is that it is very easy to interpret the change in wins a team would have if the value of one
+of the variable in the model increase or decreases. Teams can make changes to the players that they
+play or try to trade or sign players that will help improve the team statistics that will lead to the
+team winning more games.
+
+\newpage
+
+**Code**
+
+```{r echo=TRUE, results="hide"}
 hitting <- read.csv("FG_Custom_2015_2019.csv")
 hitting[] <- lapply(hitting, gsub, pattern="%", replacement = "")
 
@@ -19,7 +92,7 @@ colnames(hitting)<- c("Season","Team","ExitVelocity_H","LaunchAngle_H","Barrel%_
 str(hitting)
 ```
 
-```{r}
+```{r echo=TRUE, results="hide"}
 pitching = read.csv("FG_Pitching_2015_2019.csv")
 pitching[] <- lapply(pitching, gsub, pattern="%", replacement = "")
 
@@ -28,12 +101,11 @@ colnames(pitching) = c("Season","Team","Wins","BABIP_P","LOB%_P","HR/FB_P","ERA_
 str(pitching)
 ```
 
-```{r}
+```{r echo=TRUE, results="hide"}
 pitching_RunsAllowed = read.csv("FG_Pitching_RunsAllowed_2015_2019.csv")
 pitching = cbind(pitching,pitching_RunsAllowed[,5])
 colnames(pitching) = c("Season","Team","Wins","BABIP_P","LOB%_P","HR/FB_P","ERA_P","FIP_P","xFIP_P","WAR_P","WHIP_P","LineDrive%_P","Groundball%_P","Flyball%_P","SwingingStrike%_P","K%_P","BB%_P","SIERA_P","Soft%_P","Med%_P","Hard%_P","ExitVelo_P","LaunchAngle_P","Barrel%_P","HardHit%_P","RA_P")
 ```
-
 
 ```{r eval=FALSE, include=FALSE}
 #Changing Team name in pitching to match in hitting
@@ -76,19 +148,16 @@ pitching =
   ))
 ```
 
-**Merge Data frames:**
-```{r}
+```{r echo=TRUE, results="hide"}
 baseball = merge(x = hitting,y = pitching,by = c("Team", "Season"))
 ```
-
 
 ```{r eval=FALSE, include=FALSE}
 library(writexl)
 write_xlsx(baseball,'C:\\Users\\John\\Desktop\\baseball.xlsx')
 ```
 
-**Data Manipulation:**
-```{r}
+```{r echo=TRUE, results="hide"}
 #Change all columns except team from characters to numeric
 i = c(2:length(baseball))
 baseball[ , i] <- apply(baseball[ , i], 2,            
@@ -96,6 +165,28 @@ baseball[ , i] <- apply(baseball[ , i], 2,
 sapply(baseball, class)      
 
 ```
+
+
+
+
+```{r echo=TRUE, warning=FALSE}
+library(psych)
+#summary statistics
+describe(baseball, fast = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+#Function to print correlations
+attach(baseball)
+x = 3
+for (i in baseball[,3:43]) {
+  cat(names(baseball[x]),  " and Wins correlation: " , cor(i,Wins),"\n")
+  x = x + 1
+}
+
+
+```
+
 
 **Function to calculation expected wins:**
 ```{r}
@@ -105,41 +196,34 @@ PythagoreanWinningPercentage = function(RS,RA)
 }
 ```
 
-**Summary Statistics:**
-```{r}
-#summary statistics
-summary(baseball)
-```
+
 
 
 ```{r eval=FALSE, include=FALSE}
-hist(baseball$Wins)
+ggplot(data =baseball, aes(x = `K%_P`, y = OPS_H)) + geom_point() +
+  geom_hline(yintercept= mean(OPS_H)) +
+  geom_vline(xintercept = mean(`K%_P`))
+  theme_minimal()
 ```
 
-**Exploring Wins compared to the other variable in the data set:**
+
+
 
 ```{r}
-#Remove Team from data so dataframe and be used of modeling
-baseball_m = baseball[,-c(1,2,14,24,25,26,27,35)]
-```
+library(ggplot2)
 
-```{r}
-
+ggplot(data = baseball,
+       aes(x = Wins)) +
+  geom_histogram(bins = 30, color = "black",aes(y=..density..)) +
+  geom_density(color = "blue") +
+  labs(title = "Histogram of Wins")
 ```
 
 
 ```{r include=FALSE}
+#Remove Team from data so dataframe and be used of modeling
+baseball_m = baseball[,-c(1,2,14,24,25,26,27,35,43)]
 
-for (i in names(baseball)) {
-  plot(baseball$Wins,baseball_m[1:150,i],xlab = "Wins",ylab = i)
-}
-
-```
-
-
-
-**Modeling:**
-```{r eval=FALSE, include=FALSE}
 set.seed(1234)
 sample_size = round(nrow(baseball_m )*.80)
 index <- sample(seq_len(nrow(baseball_m)), size = sample_size)
@@ -156,7 +240,7 @@ intercept_only <- lm(Wins ~ 1, data=train)
 full <- lm(Wins ~ ., data=train)
 
 #perform forward stepwise regression
-model <- step(intercept_only, direction='forward', scope=formula(full))
+model <- step(intercept_only, direction='both', scope=formula(full))
 
 predict(model,test)
 actual_vs_pred = data.frame( predict(model, type="response",test),baseball_m$Wins[-index])
@@ -172,45 +256,27 @@ actual_vs_pred$change = abs(actual_vs_pred$PWL_Diff) - abs(actual_vs_pred$diff)
 
 ```
 
-```{r eval=FALSE, include=FALSE}
-for (i in names(baseball)) {
-  plot(actual_vs_pred$diff,baseball_m[-index,i], xlab ="Difference", ylab = i)
-}
+```{r fig.height=4, fig.width=8}
+library(performance)
+check_model(model, check = c("linearity","vif","homogeneity","normality"))
+model_performance(model)
 ```
 
+
+
+**Regression Diagnostics**
+```{r fig.height=4, fig.width=8}
+model_final = lm(formula = Wins ~ WHIP_P + OPS_H + `LOB%_P` + `Flyball%_P` + 
+    `HardHit%_H` + `HR/FB_P` , data = train)
+
+check_model(model_final, check = c("linearity","vif","homogeneity","normality"))
+model_performance(model_final)
+
+```
 
 ```{r include=FALSE}
-set.seed(1234)
-sample_size = round(nrow(baseball_m )*.80)
-index <- sample(seq_len(nrow(baseball_m)), size = sample_size)
- 
-train <- baseball_m[index, ]
-test <- baseball_m[-index, ]
-
-
-#define intercept-only model
-intercept_only <- glm(Wins ~ 1,family = poisson(link = "log"), data=train)
-
-#define model with all predictors
-full <- glm(Wins ~ .,family = poisson(link = "log"), data=train)
-
-#perform forward stepwise regression
-model <- step(intercept_only, direction='both', scope=formula(full))
-
-predict(model, type="response",test)
-actual_vs_pred = data.frame( predict(model, type="response",test),baseball_m$Wins[-index])
-colnames(actual_vs_pred) = c("Predicted","Actual")
-actual_vs_pred$diff = actual_vs_pred$Actual - actual_vs_pred$Predicted
-actual_vs_pred$team = baseball$Team[-index]
-actual_vs_pred$season = baseball$Season[-index]
-```
-
-```{r}
-model = glm(formula = Wins ~ WHIP_P + wOBA_H + `LOB%_P`,
-    family = poisson(link = "log"), data = train)
-
-predict(model, type="response",test)
-actual_vs_pred = data.frame( predict(model, type="response",test),baseball_m$Wins[-index])
+predict(model_final,test)
+actual_vs_pred = data.frame( predict(model_final, type="response",test),baseball_m$Wins[-index])
 colnames(actual_vs_pred) = c("Predicted","Actual")
 actual_vs_pred$team = baseball$Team[-index]
 actual_vs_pred$season = baseball$Season[-index]
@@ -222,37 +288,23 @@ actual_vs_pred$diff = actual_vs_pred$Actual - actual_vs_pred$Predicted
 actual_vs_pred$change = abs(actual_vs_pred$PWL_Diff) - abs(actual_vs_pred$diff)
 ```
 
-```{r echo=FALSE}
-plot(actual_vs_pred$Actual,actual_vs_pred$Predicted)
-text(actual_vs_pred$Actual,actual_vs_pred$Predicted, labels=baseball$Team[-index], cex= 0.3, pos=1)
+
+```{r }
+ggplot(data =actual_vs_pred, aes(x = Actual, y = Predicted)) + geom_point() +
+  theme_minimal() +
+  labs(x = "Actual Wins",
+       y = "Predicted Wins",
+       title = "Plot of MLB Actual vs Predicted Wins",
+       caption = "2015-2019 FanGraphs Data") +
+  geom_text(label = baseball$Team[-index], nudge_x = 1.5)
 ```
-
-```{r}
-model2 = glm(formula = Wins ~ WHIP_P + wOBA_H + `LOB%_P` + `K%_H`,
-    family = poisson(link = "log"), data = train)
-
-model3 = lm(Wins ~ Runs_H, data = baseball)
-model4 = lm(Wins ~ RA_P, data = baseball)
-```
-
-
-**Regression Diagnostics**
-```{r}
-library(performance)
-check_model(model)
-model_performance(model)
-
-check_model(model2)
-model_performance(model2)
-```
-
 
 
 
 ```{r eval=FALSE, include=FALSE}
 set.seed(1234)
 sample_size = round(nrow(baseball_m )*.80)
-#colnames(baseball_m) <- make.names(colnames(baseball_m))
+colnames(baseball_m) <- make.names(colnames(baseball_m))
 index <- sample(seq_len(nrow(baseball_m)), size = sample_size)
 train <- baseball_m[index, ]
 test <- baseball_m[-index, ]
@@ -290,7 +342,6 @@ actual_vs_pred$change = abs(actual_vs_pred$PWL_Diff) - abs(actual_vs_pred$diff)
 View(actual_vs_pred)
 ```
 
-
 ```{r eval=FALSE, include=FALSE}
 library(randomForest)
 set.seed(1234)
@@ -298,7 +349,6 @@ model = randomForest(Wins ~ . ,data = train)
 sqrt(model$mse[which.min(model$mse)]) # Avg diff between pred and obs
 
 ```
-
 
 ```{r eval=FALSE, include=FALSE}
 model_tuned <- tuneRF(
@@ -325,9 +375,6 @@ actual_vs_pred$season = baseball$Season[-index]
 
 View(actual_vs_pred)
 ```
-
-
-
 
 ```{r eval=FALSE, include=FALSE}
 library(e1071)
@@ -359,8 +406,6 @@ actual_vs_pred$change = abs(actual_vs_pred$PWL_Diff) - abs(actual_vs_pred$diff)
 View(actual_vs_pred)
 ```
 
-
-
 ```{r eval=FALSE, include=FALSE}
 attach(baseball)
 selected = c(19)
@@ -373,9 +418,6 @@ detach(baseball)
 
 ```
 
-```{r}
-
-```
 
 
 
